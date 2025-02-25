@@ -10,12 +10,15 @@ document.addEventListener("DOMContentLoaded", () => {
   setupEndDateField();
 });
 
-// Form submission listener
 document
   .getElementById("employeeForm")
   .addEventListener("submit", function (e) {
     e.preventDefault();
-    if (validateForm()) {
+    console.log("Form submitted");
+    const isValid = validateForm();
+    console.log("Form validation result:", isValid);
+    if (isValid) {
+      console.log("Attempting to save employee");
       saveEmployee();
     }
   });
@@ -60,27 +63,15 @@ function setupSearchAndPagination() {
   });
 }
 
-// function for loading employees
+// Function for loading employees
 function loadEmployees(page = 1, search = "") {
   currentPage = page;
   const url = `api.php?page=${page}&limit=${itemsPerPage}&search=${encodeURIComponent(
     search
   )}`;
 
-  showLoadingSpinner();
-
   fetch(url)
-    .then(async (response) => {
-      if (!response.ok) {
-        if (response.status === 401) {
-          window.location.href = "login.php";
-          throw new Error("Session expired. Please log in again.");
-        }
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.message || "Failed to load employees");
-      }
-      return response.json();
-    })
+    .then((response) => response.json())
     .then((data) => {
       if (data.status === "success") {
         displayEmployees(data.data);
@@ -90,11 +81,11 @@ function loadEmployees(page = 1, search = "") {
       }
     })
     .catch((error) => {
-      console.error("Error:", error);
-      showAlert(error.message, "error");
-    })
-    .finally(() => {
-      hideLoadingSpinner();
+      Swal.fire({
+        icon: "error",
+        title: "Error!",
+        text: error.message,
+      });
     });
 }
 
@@ -186,12 +177,9 @@ function updatePagination(pagination) {
 
 //function for viewing employee details
 function viewEmployee(id) {
-  showLoadingSpinner();
-
   fetch(`api.php?id=${id}`)
     .then((response) => response.json())
     .then((data) => {
-      hideLoadingSpinner();
       if (data.status === "success" && data.data.length > 0) {
         const employee = data.data[0];
         Swal.fire({
@@ -207,13 +195,20 @@ function viewEmployee(id) {
           },
         });
       } else {
-        showAlert("Employee not found", "error");
+        Swal.fire({
+          icon: "error",
+          title: "Error!",
+          text: "Employee not found",
+        });
       }
     })
     .catch((error) => {
-      hideLoadingSpinner();
       console.error("Error:", error);
-      showAlert("Error loading employee details", "error");
+      Swal.fire({
+        icon: "error",
+        title: "Error!",
+        text: "Error loading employee details",
+      });
     });
 }
 
@@ -267,34 +262,30 @@ function generateEmployeeDetailsHTML(employee) {
 
 // Function for saving new employee
 function saveEmployee() {
-  showLoadingSpinner();
-
   const employeeData = {
     employeeId: document.getElementById("employeeId").value.trim(),
     employeeName: document.getElementById("employeeName").value.trim(),
-    employeeDOB: document.getElementById("employeeDOB").value,
-    employeeGender: document.getElementById("employeeGender").value,
-    employeeNationalId: document
-      .getElementById("employeeNationalId")
-      .value.trim(),
+    employeeDOB: document.getElementById("employeeDOB").value || null,
+    employeeGender: document.getElementById("employeeGender").value || null,
+    employeeNationalId:
+      document.getElementById("employeeNationalId").value.trim() || null,
     employeePhone: document.getElementById("employeePhone").value.trim(),
     employeeEmail: document.getElementById("employeeEmail").value.trim(),
-    employeeMaritalStatus: document.getElementById("employeeMaritalStatus")
-      .value,
+    employeeMaritalStatus:
+      document.getElementById("employeeMaritalStatus").value || null,
     employeeJobTitle: document.getElementById("employeeJobTitle").value.trim(),
-    employeeDepartment: document.getElementById("employeeDepartment").value,
-    employeeEmploymentType: document.getElementById("employeeEmploymentType")
-      .value,
+    employeeDepartment:
+      document.getElementById("employeeDepartment").value || null,
+    employeeEmploymentType:
+      document.getElementById("employeeEmploymentType").value || null,
     employeeHireDate: document.getElementById("employeeHireDate").value,
-    employeeEndDate: document.getElementById("employeeEndDate").value,
-    employeeOfficeLocation: document
-      .getElementById("employeeOfficeLocation")
-      .value.trim(),
-    employeeSalary: document.getElementById("employeeSalary").value,
-    employeePayGrade: document.getElementById("employeePayGrade").value,
-    employeeBankAccount: document
-      .getElementById("employeeBankAccount")
-      .value.trim(),
+    employeeEndDate: document.getElementById("employeeEndDate").value || null,
+    employeeOfficeLocation:
+      document.getElementById("employeeOfficeLocation").value.trim() || null,
+    employeeSalary: document.getElementById("employeeSalary").value || null,
+    employeePayGrade: document.getElementById("employeePayGrade").value || null,
+    employeeBankAccount:
+      document.getElementById("employeeBankAccount").value.trim() || null,
   };
 
   if (currentEmployeeId) {
@@ -308,35 +299,41 @@ function saveEmployee() {
     },
     body: JSON.stringify(employeeData),
   })
-    .then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to save employee");
-      }
-      return data;
-    })
+    .then((response) => response.json())
     .then((data) => {
       if (data.status === "success") {
-        showAlert(data.message, "success");
-        const modal = bootstrap.Modal.getInstance(
-          document.getElementById("employeeModal")
-        );
-        modal.hide();
-        loadEmployees(currentPage);
+        // Hide modal
+        const modalElement = document.getElementById("employeeModal");
+        const modalInstance = bootstrap.Modal.getInstance(modalElement);
+        if (modalInstance) {
+          modalInstance.hide();
+        }
+
+        // Show success message
+        Swal.fire({
+          icon: "success",
+          title: "Success!",
+          text: data.message,
+          timer: 1500,
+        });
+
+        // Clear form and reload table
         clearForm();
+        loadEmployees(currentPage);
       } else {
         throw new Error(data.message || "Failed to save employee");
       }
     })
     .catch((error) => {
-      console.error("Error:", error);
-      showAlert(error.message, "error");
-    })
-    .finally(() => {
-      hideLoadingSpinner();
+      Swal.fire({
+        icon: "error",
+        title: "Error!",
+        text: error.message,
+      });
     });
 }
 
+//function for editing an employee
 function editEmployee(id) {
   currentEmployeeId = id;
   showLoadingSpinner();
@@ -368,7 +365,7 @@ function editEmployee(id) {
 function deleteEmployee(id) {
   Swal.fire({
     title: "Are you sure?",
-    text: "You won't be able to revert this",
+    text: "You won't be able to revert this!",
     icon: "warning",
     showCancelButton: true,
     confirmButtonColor: "#d33",
@@ -376,25 +373,29 @@ function deleteEmployee(id) {
     confirmButtonText: "Yes, delete it!",
   }).then((result) => {
     if (result.isConfirmed) {
-      showLoadingSpinner();
       fetch(`api.php?id=${id}`, {
         method: "DELETE",
       })
         .then((response) => response.json())
         .then((data) => {
           if (data.status === "success") {
-            showAlert("Employee deleted successfully", "success");
+            Swal.fire({
+              icon: "success",
+              title: "Deleted!",
+              text: "Employee has been deleted.",
+              timer: 1500,
+            });
             loadEmployees(currentPage);
           } else {
             throw new Error(data.message || "Error deleting employee");
           }
         })
         .catch((error) => {
-          console.error("Error:", error);
-          showAlert(error.message, "error");
-        })
-        .finally(() => {
-          hideLoadingSpinner();
+          Swal.fire({
+            icon: "error",
+            title: "Error!",
+            text: error.message,
+          });
         });
     }
   });
@@ -440,14 +441,20 @@ function fillForm(employee) {
 
 function clearForm() {
   currentEmployeeId = null;
-  document.getElementById("employeeForm").reset();
-  document.getElementById("employeeModalLabel").textContent = "Add Employee";
-  clearErrors();
+  const form = document.getElementById("employeeForm");
+  form.reset();
 
   // Reset end date field
   const endDateField = document.getElementById("employeeEndDate");
   endDateField.setAttribute("disabled", "disabled");
   endDateField.removeAttribute("required");
+  endDateField.value = "";
+
+  // Clear any validation errors
+  clearErrors();
+
+  // Reset modal title
+  document.getElementById("employeeModalLabel").textContent = "Add Employee";
 }
 
 // Validation Functions
@@ -466,6 +473,7 @@ function validateForm() {
   let isValid = true;
   let firstError = null;
 
+  // Check required fields
   requiredFields.forEach((fieldId) => {
     const field = document.getElementById(fieldId);
     if (!field.value.trim()) {
@@ -475,6 +483,16 @@ function validateForm() {
     }
   });
 
+  // Validate salary
+  const salaryField = document.getElementById("employeeSalary");
+  const salary = parseFloat(salaryField.value);
+  if (isNaN(salary) || salary < 0) {
+    showError("employeeSalary", "Salary must be a positive number");
+    isValid = false;
+    if (!firstError) firstError = salaryField;
+  }
+
+  // Validate email
   const emailField = document.getElementById("employeeEmail");
   if (emailField.value && !isValidEmail(emailField.value)) {
     showError("employeeEmail", "Please enter a valid email address");
@@ -482,6 +500,7 @@ function validateForm() {
     if (!firstError) firstError = emailField;
   }
 
+  // Validate phone
   const phoneField = document.getElementById("employeePhone");
   if (phoneField.value && !isValidPhone(phoneField.value)) {
     showError("employeePhone", "Please enter a valid phone number");
@@ -525,24 +544,45 @@ function isValidPhone(phone) {
 }
 
 function showAlert(message, icon) {
-  Swal.fire({
-    title: message,
-    icon: icon,
-    timer: 2000,
-    showConfirmButton: false,
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      Swal.fire({
+        icon: icon,
+        title: icon === "success" ? "Success!" : "Error!",
+        text: message,
+        timer: icon === "success" ? 2000 : undefined,
+        showConfirmButton: icon !== "success",
+        didClose: () => {
+          resolve();
+        },
+      });
+    }, 100);
   });
 }
 
-function showLoadingSpinner() {
-  Swal.fire({
-    title: "Loading...",
-    allowOutsideClick: false,
-    didOpen: () => {
-      Swal.showLoading();
-    },
-  });
-}
+// function showLoadingSpinner() {
+//   Swal.close();
 
-function hideLoadingSpinner() {
-  Swal.close();
-}
+//   setTimeout(() => {
+//     Swal.fire({
+//       title: "Loading...",
+//       allowOutsideClick: false,
+//       allowEscapeKey: false,
+//       showConfirmButton: false,
+//       didOpen: () => {
+//         Swal.showLoading();
+//       },
+//     });
+//   }, 100);
+// }
+
+// function hideLoadingSpinner() {
+//   return new Promise((resolve) => {
+//     setTimeout(() => {
+//       if (Swal.isLoading()) {
+//         Swal.close();
+//       }
+//       resolve();
+//     }, 100);
+//   });
+// }
