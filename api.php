@@ -1,10 +1,6 @@
 <?php
 session_start();
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-// Set proper headers
+error_reporting(0); // Disable error reporting to prevent PHP errors from breaking JSON
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE');
@@ -12,87 +8,89 @@ header('Access-Control-Allow-Headers: Content-Type');
 
 require_once 'db_config.php';
 
-// Debug logging
-error_log("API Request Method: " . $_SERVER['REQUEST_METHOD']);
-error_log("Raw input: " . file_get_contents("php://input"));
-
-// Check if user is logged in
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
-    exit;
-}
-
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit;
 }
 
-$method = $_SERVER['REQUEST_METHOD'];
+// Check if user is logged in
+if (!isset($_SESSION['user_id'])) {
+    http_response_code(401);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'Your session has expired. Please log in again.'
+    ]);
+    exit;
+}
 
-// Get page number and limit for pagination
-$page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
-$limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 10;
-$offset = ($page - 1) * $limit;
+try {
+    $method = $_SERVER['REQUEST_METHOD'];
+    $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+    $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 10;
+    $offset = ($page - 1) * $limit;
+    $search = isset($_GET['search']) ? trim($_GET['search']) : '';
 
-// Get search term if provided
-$search = isset($_GET['search']) ? $_GET['search'] : '';
-
-switch ($method) {
-    case 'GET':
-        try {
-            // If ID is provided, fetch single employee
+    switch ($method) {
+        case 'GET':
+            // Single employee fetch
             if (isset($_GET['id'])) {
                 $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = ?");
                 $stmt->execute([$_GET['id']]);
-                $employee = $stmt->fetch();
+                $employee = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 if ($employee) {
                     echo json_encode(['status' => 'success', 'data' => [$employee]]);
                 } else {
-                    echo json_encode(['status' => 'error', 'message' => 'Employee not found']);
+                    http_response_code(404);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'Employee not found'
+                    ]);
                 }
                 exit;
             }
 
-            // Count total records for pagination
+            // List employees with search
+            $whereClause = '';
+            $params = [];
             if ($search) {
-                $countStmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE 
+                $whereClause = "WHERE 
+                    employee_id LIKE ? OR
                     employee_name LIKE ? OR 
                     email LIKE ? OR 
+                    phone_number LIKE ? OR
                     job_title LIKE ? OR 
-                    department LIKE ?");
+                    department LIKE ? OR
+                    employment_type LIKE ? OR
+                    office_location LIKE ?";
                 $searchTerm = "%$search%";
-                $countStmt->execute([$searchTerm, $searchTerm, $searchTerm, $searchTerm]);
+                $params = array_fill(0, 8, $searchTerm);
+            }
+
+            // Count total records
+            $countSql = "SELECT COUNT(*) FROM employees " . $whereClause;
+            $countStmt = $pdo->prepare($countSql);
+            if ($search) {
+                $countStmt->execute($params);
             } else {
-                $countStmt = $pdo->query("SELECT COUNT(*) FROM employees");
+                $countStmt->execute();
             }
             $totalRecords = $countStmt->fetchColumn();
             $totalPages = ceil($totalRecords / $limit);
 
-            // Fetch employees with pagination and search
+            // Fetch records
+            $sql = "SELECT * FROM employees $whereClause ORDER BY id DESC LIMIT ? OFFSET ?";
+            $stmt = $pdo->prepare($sql);
+
             if ($search) {
-                $sql = "SELECT * FROM employees WHERE 
-                    employee_name LIKE :search OR 
-                    email LIKE :search OR 
-                    job_title LIKE :search OR 
-                    department LIKE :search 
-                    ORDER BY id DESC LIMIT :limit OFFSET :offset";
-                $stmt = $pdo->prepare($sql);
-                $stmt->bindValue(':search', "%$search%", PDO::PARAM_STR);
-                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-                $stmt->execute();
+                array_push($params, $limit, $offset);
+                $stmt->execute($params);
             } else {
-                $sql = "SELECT * FROM employees ORDER BY id DESC LIMIT :limit OFFSET :offset";
-                $stmt = $pdo->prepare($sql);
-                $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
-                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-                $stmt->execute();
+                $stmt->execute([$limit, $offset]);
             }
 
-            $employees = $stmt->fetchAll();
+            $employees = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             echo json_encode([
                 'status' => 'success',
@@ -104,15 +102,9 @@ switch ($method) {
                     'total_pages' => $totalPages
                 ]
             ]);
-        } catch (PDOException $e) {
-            error_log("Database error: " . $e->getMessage());
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-        }
-        break;
+            break;
 
-    case 'POST':
-        try {
+        case 'POST':
             $data = json_decode(file_get_contents("php://input"), true);
 
             // Validate required fields
@@ -120,7 +112,10 @@ switch ($method) {
             foreach ($required_fields as $field) {
                 if (empty($data[$field])) {
                     http_response_code(400);
-                    echo json_encode(['status' => 'error', 'message' => ucfirst($field) . ' is required']);
+                    echo json_encode([
+                        'status' => 'error',
+                        'message' => 'Please fill in all required fields: ' . str_replace('employee', '', $field)
+                    ]);
                     exit;
                 }
             }
@@ -128,19 +123,26 @@ switch ($method) {
             // Validate email format
             if (!filter_var($data['employeeEmail'], FILTER_VALIDATE_EMAIL)) {
                 http_response_code(400);
-                echo json_encode(['status' => 'error', 'message' => 'Invalid email format']);
+                echo json_encode([
+                    'status' => 'error',
+                    'message' => 'Invalid email format'
+                ]);
                 exit;
             }
 
-            // Check if email or employee ID already exists
+            // Check for duplicates
             $stmt = $pdo->prepare("SELECT COUNT(*) FROM employees WHERE email = ? OR employee_id = ?");
             $stmt->execute([$data['employeeEmail'], $data['employeeId']]);
             if ($stmt->fetchColumn() > 0) {
                 http_response_code(400);
-                echo json_encode(['status' => 'error', 'message' => 'Email or Employee ID already exists']);
+                echo json_encode([
+                    'status' => 'error',
+                    'message' => 'An employee with this email or ID already exists'
+                ]);
                 exit;
             }
 
+            // Insert employee
             $sql = "INSERT INTO employees (
                 employee_id, employee_name, DOB, gender, national_id, 
                 phone_number, email, marital_status, job_title, department, 
@@ -169,28 +171,18 @@ switch ($method) {
                 $data['employeeBankAccount'] ?: null
             ]);
 
-            echo json_encode(['status' => 'success', 'message' => 'Employee added successfully']);
-        } catch (PDOException $e) {
-            error_log("Database error: " . $e->getMessage());
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-        }
-        break;
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Employee added successfully'
+            ]);
+            break;
 
-    case 'PUT':
-        try {
+        case 'PUT':
             $data = json_decode(file_get_contents("php://input"), true);
 
             if (!isset($data['id'])) {
                 http_response_code(400);
                 echo json_encode(['status' => 'error', 'message' => 'Employee ID is required']);
-                exit;
-            }
-
-            // Validate email format
-            if (!filter_var($data['employeeEmail'], FILTER_VALIDATE_EMAIL)) {
-                http_response_code(400);
-                echo json_encode(['status' => 'error', 'message' => 'Invalid email format']);
                 exit;
             }
 
@@ -232,16 +224,13 @@ switch ($method) {
                 $data['id']
             ]);
 
-            echo json_encode(['status' => 'success', 'message' => 'Employee updated successfully']);
-        } catch (PDOException $e) {
-            error_log("Database error: " . $e->getMessage());
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-        }
-        break;
+            echo json_encode([
+                'status' => 'success',
+                'message' => 'Employee updated successfully'
+            ]);
+            break;
 
-    case 'DELETE':
-        try {
+        case 'DELETE':
             if (!isset($_GET['id'])) {
                 http_response_code(400);
                 echo json_encode(['status' => 'error', 'message' => 'Employee ID is required']);
@@ -257,11 +246,21 @@ switch ($method) {
                 http_response_code(404);
                 echo json_encode(['status' => 'error', 'message' => 'Employee not found']);
             }
-        } catch (PDOException $e) {
-            error_log("Database error: " . $e->getMessage());
-            http_response_code(500);
-            echo json_encode(['status' => 'error', 'message' => 'Database error: ' . $e->getMessage()]);
-        }
-        break;
+            break;
+    }
+} catch (PDOException $e) {
+    error_log("Database error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'A database error occurred. Please try again later.'
+    ]);
+} catch (Exception $e) {
+    error_log("General error: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'status' => 'error',
+        'message' => 'An unexpected error occurred. Please try again later.'
+    ]);
 }
 ?>

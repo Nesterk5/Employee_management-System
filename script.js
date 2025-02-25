@@ -7,7 +7,27 @@ const itemsPerPage = 10;
 document.addEventListener("DOMContentLoaded", () => {
   loadEmployees();
   setupSearchAndPagination();
+  setupEndDateField();
 });
+
+// Setup end date field functionality
+function setupEndDateField() {
+  const endDateField = document.getElementById("employeeEndDate");
+  endDateField.setAttribute("disabled", "disabled");
+
+  document
+    .getElementById("employeeEmploymentType")
+    .addEventListener("change", function () {
+      if (this.value === "Contract") {
+        endDateField.removeAttribute("disabled");
+        endDateField.setAttribute("required", "required");
+      } else {
+        endDateField.setAttribute("disabled", "disabled");
+        endDateField.removeAttribute("required");
+        endDateField.value = "";
+      }
+    });
+}
 
 // Form validation and submit handler
 document
@@ -26,16 +46,17 @@ function loadEmployees(page = 1, search = "") {
     search
   )}`;
 
+  showLoadingSpinner();
+
   fetch(url)
     .then(async (response) => {
       if (!response.ok) {
         if (response.status === 401) {
           window.location.href = "login.php";
-          throw new Error("Unauthorized");
+          throw new Error("Session expired. Please log in again.");
         }
-        // Try to get error message from response
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.message || "Network response was not ok");
+        throw new Error(errorData?.message || "Failed to load employees");
       }
       return response.json();
     })
@@ -44,21 +65,23 @@ function loadEmployees(page = 1, search = "") {
         displayEmployees(data.data);
         updatePagination(data.pagination);
       } else {
-        throw new Error(data.message || "Error loading employees");
+        throw new Error(data.message || "Failed to load employees");
       }
     })
     .catch((error) => {
       console.error("Error:", error);
-      showAlert(error.message || "Error loading employees", "error");
+      showAlert(error.message, "error");
+    })
+    .finally(() => {
+      hideLoadingSpinner();
     });
 }
 
-// Display employees in table
 function displayEmployees(employees) {
   const tableBody = document.getElementById("employeeTableBody");
   tableBody.innerHTML = "";
 
-  if (employees.length === 0) {
+  if (!employees || employees.length === 0) {
     tableBody.innerHTML = `
             <tr>
                 <td colspan="7" class="text-center">No employees found</td>
@@ -68,52 +91,129 @@ function displayEmployees(employees) {
   }
 
   employees.forEach((employee) => {
-    const row = `
-            <tr>
-                <td>${employee.employee_id || ""}</td>
-                <td>${employee.employee_name || ""}</td>
-                <td>${employee.email || ""}</td>
-                <td>${employee.phone_number || ""}</td>
-                <td>${employee.job_title || ""}</td>
-                <td>${employee.department || ""}</td>
-                <td>
-                    <button class="btn btn-sm btn-primary" onclick="editEmployee(${
-                      employee.id
-                    })">
-                        Edit
-                    </button>
-                    <button class="btn btn-sm btn-danger" onclick="deleteEmployee(${
-                      employee.id
-                    })">
-                        Delete
-                    </button>
-                </td>
-            </tr>
+    const row = document.createElement("tr");
+    row.className = "employee-row";
+
+    row.innerHTML = `
+            <td>${employee.employee_id || ""}</td>
+            <td>${employee.employee_name || ""}</td>
+            <td>${employee.email || ""}</td>
+            <td>${employee.phone_number || ""}</td>
+            <td>${employee.job_title || ""}</td>
+            <td>${employee.department || ""}</td>
+            <td>
+                <button class="btn btn-sm btn-info view-button" onclick="viewEmployee(${
+                  employee.id
+                })">
+                    <i class="fas fa-eye"></i> View
+                </button>
+                <button class="btn btn-sm btn-primary me-1" onclick="editEmployee(${
+                  employee.id
+                })">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteEmployee(${
+                  employee.id
+                })">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </td>
         `;
-    tableBody.innerHTML += row;
+
+    tableBody.appendChild(row);
   });
 }
 
-// Setup search functionality
-function setupSearchAndPagination() {
-  const searchContainer = document.getElementById("searchContainer");
-  searchContainer.innerHTML = `
-        <div class="input-group mb-3">
-            <input type="text" class="form-control" id="searchInput" placeholder="Search employees...">
-            <button class="btn btn-outline-secondary" type="button" id="searchButton">Search</button>
-        </div>
-    `;
+// viewEmployee function to display employee details
+function viewEmployee(id) {
+  showLoadingSpinner();
 
-  let searchTimeout;
-  document.getElementById("searchInput").addEventListener("input", (e) => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      loadEmployees(1, e.target.value);
-    }, 500);
-  });
+  fetch(`api.php?id=${id}`)
+    .then((response) => response.json())
+    .then((data) => {
+      hideLoadingSpinner();
+      if (data.status === "success" && data.data.length > 0) {
+        const employee = data.data[0];
+        Swal.fire({
+          title: `<h5 class="mb-0">${employee.employee_name}'s Details</h5>`,
+          html: `
+                        <div class="container-fluid">
+                            <div class="row mt-3">
+                                <div class="col-md-6">
+                                    <p><strong>Employee ID:</strong> ${
+                                      employee.employee_id
+                                    }</p>
+                                    <p><strong>Name:</strong> ${
+                                      employee.employee_name
+                                    }</p>
+                                    <p><strong>Email:</strong> ${
+                                      employee.email
+                                    }</p>
+                                    <p><strong>Phone:</strong> ${
+                                      employee.phone_number
+                                    }</p>
+                                    <p><strong>Gender:</strong> ${
+                                      employee.gender || "N/A"
+                                    }</p>
+                                    <p><strong>Date of Birth:</strong> ${
+                                      employee.DOB || "N/A"
+                                    }</p>
+                                    <p><strong>National ID:</strong> ${
+                                      employee.national_id || "N/A"
+                                    }</p>
+                                    <p><strong>Marital Status:</strong> ${
+                                      employee.marital_status || "N/A"
+                                    }</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Job Title:</strong> ${
+                                      employee.job_title
+                                    }</p>
+                                    <p><strong>Department:</strong> ${
+                                      employee.department
+                                    }</p>
+                                    <p><strong>Employment Type:</strong> ${
+                                      employee.employment_type || "N/A"
+                                    }</p>
+                                    <p><strong>Hire Date:</strong> ${
+                                      employee.hire_date || "N/A"
+                                    }</p>
+                                    <p><strong>End Date:</strong> ${
+                                      employee.end_date || "N/A"
+                                    }</p>
+                                    <p><strong>Office Location:</strong> ${
+                                      employee.office_location || "N/A"
+                                    }</p>
+                                    <p><strong>Pay Grade:</strong> ${
+                                      employee.pay_grade || "N/A"
+                                    }</p>
+                                    <p><strong>Bank Account:</strong> ${
+                                      employee.bank_account || "N/A"
+                                    }</p>
+                                </div>
+                            </div>
+                        </div>
+                    `,
+          width: "800px",
+          showCloseButton: true,
+          showConfirmButton: false,
+          customClass: {
+            container: "employee-details-modal",
+            popup: "swal2-popup-custom",
+            content: "px-4",
+          },
+        });
+      } else {
+        showAlert("Employee not found", "error");
+      }
+    })
+    .catch((error) => {
+      hideLoadingSpinner();
+      console.error("Error:", error);
+      showAlert("Error loading employee details", "error");
+    });
 }
 
-// Update pagination controls
 function updatePagination(pagination) {
   const paginationContainer = document.getElementById("pagination");
   const totalPages = pagination.total_pages;
@@ -152,129 +252,39 @@ function updatePagination(pagination) {
   paginationContainer.innerHTML = paginationHTML;
 }
 
-// Save employee function update
-function saveEmployee() {
-  const employeeData = {
-    employeeId: document.getElementById("employeeId").value.trim(),
-    employeeName: document.getElementById("employeeName").value.trim(),
-    employeeDOB: document.getElementById("employeeDOB").value,
-    employeeGender: document.getElementById("employeeGender").value,
-    employeeNationalId: document
-      .getElementById("employeeNationalId")
-      .value.trim(),
-    employeePhone: document.getElementById("employeePhone").value.trim(),
-    employeeEmail: document.getElementById("employeeEmail").value.trim(),
-    employeeMaritalStatus: document.getElementById("employeeMaritalStatus")
-      .value,
-    employeeJobTitle: document.getElementById("employeeJobTitle").value.trim(),
-    employeeDepartment: document
-      .getElementById("employeeDepartment")
-      .value.trim(),
-    employeeEmploymentType: document.getElementById("employeeEmploymentType")
-      .value,
-    employeeHireDate: document.getElementById("employeeHireDate").value,
-    employeeEndDate: document.getElementById("employeeEndDate").value,
-    employeeOfficeLocation: document
-      .getElementById("employeeOfficeLocation")
-      .value.trim(),
-    employeeSalary: document.getElementById("employeeSalary").value,
-    employeePayGrade: document.getElementById("employeePayGrade").value,
-    employeeBankAccount: document
-      .getElementById("employeeBankAccount")
-      .value.trim(),
-  };
-  if (currentEmployeeId) {
-    employeeData.id = currentEmployeeId;
-  }
+function setupSearchAndPagination() {
+  const searchContainer = document.getElementById("searchContainer");
+  searchContainer.innerHTML = `
+        <div class="input-group mb-3">
+            <input type="text" class="form-control" id="searchInput" placeholder="Search by name, email, job title, department...">
+            <button class="btn btn-outline-secondary" type="button" id="searchButton">
+                <i class="fas fa-search"></i> Search
+            </button>
+        </div>
+    `;
 
-  fetch("api.php", {
-    method: currentEmployeeId ? "PUT" : "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(employeeData),
-  })
-    .then(async (response) => {
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "Error saving employee");
-      }
-      return data;
-    })
-    .then((data) => {
-      if (data.status === "success") {
-        showAlert(data.message, "success");
-        const modal = bootstrap.Modal.getInstance(
-          document.getElementById("employeeModal")
-        );
-        modal.hide();
-        loadEmployees(currentPage);
-        clearForm();
-      } else {
-        throw new Error(data.message || "Error saving employee");
-      }
-    })
-    .catch((error) => {
-      console.error("Error:", error);
-      showAlert(error.message || "Error saving employee", "error");
-    });
-}
-
-// Edit employee
-function editEmployee(id) {
-  currentEmployeeId = id;
-  fetch(`api.php?id=${id}`)
-    .then((response) => response.json())
-    .then((data) => {
-      if (data.status === "success" && data.data.length > 0) {
-        const employee = data.data[0];
-        fillForm(employee);
-        document.getElementById("employeeModalLabel").textContent =
-          "Edit Employee";
-        const modal = new bootstrap.Modal(
-          document.getElementById("employeeModal")
-        );
-        modal.show();
-      } else {
-        throw new Error(data.message || "Error loading employee details");
-      }
-    })
-    .catch((error) => {
-      console.error("Error:", error);
-      showAlert("Error loading employee details", "error");
-    });
-}
-
-// Delete employee
-function deleteEmployee(id) {
-  Swal.fire({
-    title: "Are you sure?",
-    text: "You won't be able to revert this!",
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonColor: "#d33",
-    cancelButtonColor: "#3085d6",
-    confirmButtonText: "Yes, delete it!",
-  }).then((result) => {
-    if (result.isConfirmed) {
-      fetch(`api.php?id=${id}`, {
-        method: "DELETE",
-      })
-        .then((response) => response.json())
-        .then((data) => {
-          if (data.status === "success") {
-            showAlert("Employee deleted successfully", "success");
-            loadEmployees(currentPage);
-          } else {
-            throw new Error(data.message || "Error deleting employee");
-          }
-        })
-        .catch((error) => {
-          console.error("Error:", error);
-          showAlert("Error deleting employee", "error");
-        });
-    }
+  let searchTimeout;
+  document.getElementById("searchInput").addEventListener("input", (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      loadEmployees(1, e.target.value);
+    }, 500);
   });
+}
+
+// Loading spinner functions
+function showLoadingSpinner() {
+  Swal.fire({
+    title: "Loading...",
+    allowOutsideClick: false,
+    didOpen: () => {
+      Swal.showLoading();
+    },
+  });
+}
+
+function hideLoadingSpinner() {
+  Swal.close();
 }
 
 // Form validation
@@ -290,33 +300,38 @@ function validateForm() {
   clearErrors();
 
   let isValid = true;
+  let firstError = null;
 
   requiredFields.forEach((fieldId) => {
     const field = document.getElementById(fieldId);
     if (!field.value.trim()) {
       showError(fieldId, "This field is required");
       isValid = false;
+      if (!firstError) firstError = field;
     }
   });
 
-  // Email validation
   const emailField = document.getElementById("employeeEmail");
   if (emailField.value && !isValidEmail(emailField.value)) {
     showError("employeeEmail", "Please enter a valid email address");
     isValid = false;
+    if (!firstError) firstError = emailField;
   }
 
-  // Phone validation
   const phoneField = document.getElementById("employeePhone");
   if (phoneField.value && !isValidPhone(phoneField.value)) {
     showError("employeePhone", "Please enter a valid phone number");
     isValid = false;
+    if (!firstError) firstError = phoneField;
+  }
+
+  if (firstError) {
+    firstError.focus();
   }
 
   return isValid;
 }
 
-// Utility functions
 function showError(fieldId, message) {
   const field = document.getElementById(fieldId);
   field.classList.add("is-invalid");
@@ -359,6 +374,109 @@ function clearForm() {
   document.getElementById("employeeForm").reset();
   document.getElementById("employeeModalLabel").textContent = "Add Employee";
   clearErrors();
+
+  // Reset end date field
+  const endDateField = document.getElementById("employeeEndDate");
+  endDateField.setAttribute("disabled", "disabled");
+  endDateField.removeAttribute("required");
+}
+
+function saveEmployee() {
+  showLoadingSpinner();
+
+  const employeeData = {
+    employeeId: document.getElementById("employeeId").value.trim(),
+    employeeName: document.getElementById("employeeName").value.trim(),
+    employeeDOB: document.getElementById("employeeDOB").value,
+    employeeGender: document.getElementById("employeeGender").value,
+    employeeNationalId: document
+      .getElementById("employeeNationalId")
+      .value.trim(),
+    employeePhone: document.getElementById("employeePhone").value.trim(),
+    employeeEmail: document.getElementById("employeeEmail").value.trim(),
+    employeeMaritalStatus: document.getElementById("employeeMaritalStatus")
+      .value,
+    employeeJobTitle: document.getElementById("employeeJobTitle").value.trim(),
+    employeeDepartment: document.getElementById("employeeDepartment").value,
+    employeeEmploymentType: document.getElementById("employeeEmploymentType")
+      .value,
+    employeeHireDate: document.getElementById("employeeHireDate").value,
+    employeeEndDate: document.getElementById("employeeEndDate").value,
+    employeeOfficeLocation: document
+      .getElementById("employeeOfficeLocation")
+      .value.trim(),
+    employeeSalary: document.getElementById("employeeSalary").value,
+    employeePayGrade: document.getElementById("employeePayGrade").value,
+    employeeBankAccount: document
+      .getElementById("employeeBankAccount")
+      .value.trim(),
+  };
+
+  if (currentEmployeeId) {
+    employeeData.id = currentEmployeeId;
+  }
+
+  fetch("api.php", {
+    method: currentEmployeeId ? "PUT" : "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(employeeData),
+  })
+    .then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to save employee");
+      }
+      return data;
+    })
+    .then((data) => {
+      if (data.status === "success") {
+        showAlert(data.message, "success");
+        const modal = bootstrap.Modal.getInstance(
+          document.getElementById("employeeModal")
+        );
+        modal.hide();
+        loadEmployees(currentPage);
+        clearForm();
+      } else {
+        throw new Error(data.message || "Failed to save employee");
+      }
+    })
+    .catch((error) => {
+      console.error("Error:", error);
+      showAlert(error.message, "error");
+    })
+    .finally(() => {
+      hideLoadingSpinner();
+    });
+}
+
+function editEmployee(id) {
+  currentEmployeeId = id;
+  showLoadingSpinner();
+
+  fetch(`api.php?id=${id}`)
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.status === "success" && data.data.length > 0) {
+        const employee = data.data[0];
+        fillForm(employee);
+        document.getElementById("employeeModalLabel").textContent =
+          "Edit Employee";
+        const modal = new bootstrap.Modal(
+          document.getElementById("employeeModal")
+        );
+        modal.show();
+      }
+    })
+    .catch((error) => {
+      console.error("Error:", error);
+      showAlert("Error loading employee details", "error");
+    })
+    .finally(() => {
+      hideLoadingSpinner();
+    });
 }
 
 function fillForm(employee) {
@@ -385,4 +503,120 @@ function fillForm(employee) {
   document.getElementById("employeePayGrade").value = employee.pay_grade || "";
   document.getElementById("employeeBankAccount").value =
     employee.bank_account || "";
+
+  // Handle employment type and end date
+  const endDateField = document.getElementById("employeeEndDate");
+  if (employee.employment_type === "Contract") {
+    endDateField.removeAttribute("disabled");
+    endDateField.setAttribute("required", "required");
+  } else {
+    endDateField.setAttribute("disabled", "disabled");
+    endDateField.removeAttribute("required");
+  }
+}
+
+function deleteEmployee(id) {
+  Swal.fire({
+    title: "Are you sure?",
+    text: "You won't be able to revert this!",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#d33",
+    cancelButtonColor: "#3085d6",
+    confirmButtonText: "Yes, delete it!",
+  }).then((result) => {
+    if (result.isConfirmed) {
+      showLoadingSpinner();
+
+      fetch(`api.php?id=${id}`, {
+        method: "DELETE",
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.status === "success") {
+            showAlert("Employee deleted successfully", "success");
+            loadEmployees(currentPage);
+          } else {
+            throw new Error(data.message || "Error deleting employee");
+          }
+        })
+        .catch((error) => {
+          console.error("Error:", error);
+          showAlert(error.message, "error");
+        })
+        .finally(() => {
+          hideLoadingSpinner();
+        });
+    }
+  });
+}
+
+// function viewEmployee(id) {
+//   showLoadingSpinner();
+
+//   fetch(`api.php?id=${id}`)
+//     .then((response) => response.json())
+//     .then((data) => {
+//       if (data.status === "success" && data.data.length > 0) {
+//         const employee = data.data[0];
+//         showEmployeeDetails(employee);
+//       }
+//     })
+//     .catch((error) => {
+//       console.error("Error:", error);
+//       showAlert("Error loading employee details", "error");
+//     })
+//     .finally(() => {
+//       hideLoadingSpinner();
+//     });
+// }
+
+function showEmployeeDetails(employee) {
+  const detailsHTML = `
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Employee ID:</strong> ${employee.employee_id}</p>
+                <p><strong>Name:</strong> ${employee.employee_name}</p>
+                <p><strong>Email:</strong> ${employee.email}</p>
+                <p><strong>Phone:</strong> ${employee.phone_number}</p>
+                <p><strong>Gender:</strong> ${employee.gender || "N/A"}</p>
+                <p><strong>Date of Birth:</strong> ${employee.DOB || "N/A"}</p>
+                <p><strong>National ID:</strong> ${
+                  employee.national_id || "N/A"
+                }</p>
+                <p><strong>Marital Status:</strong> ${
+                  employee.marital_status || "N/A"
+                }</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Job Title:</strong> ${employee.job_title}</p>
+                <p><strong>Department:</strong> ${employee.department}</p>
+                <p><strong>Employment Type:</strong> ${
+                  employee.employment_type
+                }</p>
+                <p><strong>Hire Date:</strong> ${employee.hire_date}</p>
+                <p><strong>End Date:</strong> ${employee.end_date || "N/A"}</p>
+                <p><strong>Office Location:</strong> ${
+                  employee.office_location || "N/A"
+                }</p>
+                <p><strong>Pay Grade:</strong> ${
+                  employee.pay_grade || "N/A"
+                }</p>
+                <p><strong>Bank Account:</strong> ${
+                  employee.bank_account || "N/A"
+                }</p>
+            </div>
+        </div>
+    `;
+
+  Swal.fire({
+    title: "Employee Details",
+    html: detailsHTML,
+    width: "800px",
+    showCloseButton: true,
+    showConfirmButton: false,
+    customClass: {
+      container: "employee-details-modal",
+    },
+  });
 }
