@@ -165,7 +165,7 @@ try {
                 $data['employeeHireDate'],
                 $data['employeeEndDate'] ?: null,
                 $data['employeeOfficeLocation'] ?: null,
-                $data['employeeSalary'] ?: null,
+                $data['employeeSalary'],
                 $data['employeePayGrade'] ?: null,
                 $data['employeeBankAccount'] ?: null
             ]);

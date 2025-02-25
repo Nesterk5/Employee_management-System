@@ -260,34 +260,36 @@ function generateEmployeeDetailsHTML(employee) {
     `;
 }
 
-// Function for saving new employee
 function saveEmployee() {
   const employeeData = {
     employeeId: document.getElementById("employeeId").value.trim(),
     employeeName: document.getElementById("employeeName").value.trim(),
-    employeeDOB: document.getElementById("employeeDOB").value || null,
-    employeeGender: document.getElementById("employeeGender").value || null,
-    employeeNationalId:
-      document.getElementById("employeeNationalId").value.trim() || null,
+    employeeDOB: document.getElementById("employeeDOB").value,
+    employeeGender: document.getElementById("employeeGender").value,
+    employeeNationalId: document
+      .getElementById("employeeNationalId")
+      .value.trim(),
     employeePhone: document.getElementById("employeePhone").value.trim(),
     employeeEmail: document.getElementById("employeeEmail").value.trim(),
-    employeeMaritalStatus:
-      document.getElementById("employeeMaritalStatus").value || null,
+    employeeMaritalStatus: document.getElementById("employeeMaritalStatus")
+      .value,
     employeeJobTitle: document.getElementById("employeeJobTitle").value.trim(),
-    employeeDepartment:
-      document.getElementById("employeeDepartment").value || null,
-    employeeEmploymentType:
-      document.getElementById("employeeEmploymentType").value || null,
+    employeeDepartment: document
+      .getElementById("employeeDepartment")
+      .value.trim(),
+    employeeEmploymentType: document.getElementById("employeeEmploymentType")
+      .value,
     employeeHireDate: document.getElementById("employeeHireDate").value,
-    employeeEndDate: document.getElementById("employeeEndDate").value || null,
-    employeeOfficeLocation:
-      document.getElementById("employeeOfficeLocation").value.trim() || null,
-    employeeSalary: document.getElementById("employeeSalary").value || null,
-    employeePayGrade: document.getElementById("employeePayGrade").value || null,
-    employeeBankAccount:
-      document.getElementById("employeeBankAccount").value.trim() || null,
+    employeeEndDate: document.getElementById("employeeEndDate").value,
+    employeeOfficeLocation: document
+      .getElementById("employeeOfficeLocation")
+      .value.trim(),
+    employeeSalary: document.getElementById("employeeSalary").value,
+    employeePayGrade: document.getElementById("employeePayGrade").value,
+    employeeBankAccount: document
+      .getElementById("employeeBankAccount")
+      .value.trim(),
   };
-
   if (currentEmployeeId) {
     employeeData.id = currentEmployeeId;
   }
@@ -299,45 +301,35 @@ function saveEmployee() {
     },
     body: JSON.stringify(employeeData),
   })
-    .then((response) => response.json())
+    .then(async (response) => {
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Error saving employee");
+      }
+      return data;
+    })
     .then((data) => {
       if (data.status === "success") {
-        // Hide modal
-        const modalElement = document.getElementById("employeeModal");
-        const modalInstance = bootstrap.Modal.getInstance(modalElement);
-        if (modalInstance) {
-          modalInstance.hide();
-        }
-
-        // Show success message
-        Swal.fire({
-          icon: "success",
-          title: "Success!",
-          text: data.message,
-          timer: 1500,
-        });
-
-        // Clear form and reload table
-        clearForm();
+        showAlert(data.message, "success");
+        const modal = bootstrap.Modal.getInstance(
+          document.getElementById("employeeModal")
+        );
+        modal.hide();
         loadEmployees(currentPage);
+        clearForm();
       } else {
-        throw new Error(data.message || "Failed to save employee");
+        throw new Error(data.message || "Error saving employee");
       }
     })
     .catch((error) => {
-      Swal.fire({
-        icon: "error",
-        title: "Error!",
-        text: error.message,
-      });
+      console.error("Error:", error);
+      showAlert(error.message || "Error saving employee", "error");
     });
 }
 
-//function for editing an employee
+// Edit employee
 function editEmployee(id) {
   currentEmployeeId = id;
-  showLoadingSpinner();
-
   fetch(`api.php?id=${id}`)
     .then((response) => response.json())
     .then((data) => {
@@ -350,17 +342,15 @@ function editEmployee(id) {
           document.getElementById("employeeModal")
         );
         modal.show();
+      } else {
+        throw new Error(data.message || "Error loading employee details");
       }
     })
     .catch((error) => {
       console.error("Error:", error);
       showAlert("Error loading employee details", "error");
-    })
-    .finally(() => {
-      hideLoadingSpinner();
     });
 }
-
 //function for deleting an employee
 function deleteEmployee(id) {
   Swal.fire({
